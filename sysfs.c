@@ -39,7 +39,7 @@ typedef enum {
 	ptr_ext4_super_block_offset,
 } attr_ptr_t;
 
-static const char proc_dirname[] = "fs/ext4";
+static const char proc_dirname[] = "fs/ext4r";
 static struct proc_dir_entry *ext4_proc_root;
 
 struct ext4_attr {
@@ -438,7 +438,7 @@ int __init ext4_init_sysfs(void)
 {
 	int ret;
 
-	ext4_root = kobject_create_and_add("ext4", fs_kobj);
+	ext4_root = kobject_create_and_add("ext4r", fs_kobj);
 	if (!ext4_root)
 		return -ENOMEM;
 
