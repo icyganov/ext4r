@@ -6109,7 +6109,6 @@ wait_queue_head_t ext4__ioend_wq[EXT4_WQ_HASH_SZ];
 
 static int __init ext4_init_fs(void)
 {
-    return 0;
 	int i, err;
 
 	ratelimit_state_init(&ext4_mount_msg_ratelimit, 30 * HZ, 64);
@@ -6183,7 +6182,6 @@ out7:
 
 static void __exit ext4_exit_fs(void)
 {
-    return;
 	ext4_destroy_lazyinit_thread();
 	unregister_as_ext2();
 	unregister_as_ext3();
