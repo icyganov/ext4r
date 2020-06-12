@@ -1553,6 +1553,8 @@ struct ext4_sb_info {
 	struct dax_device *s_daxdev;
     // the "inodes" dir inode
     __u32 inodes_dir_ino;
+    // the "allocs" dir inode
+    __u32 allocs_dir_ino;
 };
 
 static inline struct ext4_sb_info *EXT4_SB(struct super_block *sb)

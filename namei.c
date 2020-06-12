@@ -1739,6 +1739,9 @@ static struct dentry *ext4_lookup(struct inode *dir, struct dentry *dentry, unsi
         if (sb_i->inodes_dir_ino == 0 && dentry->d_name.len == 6 && strcmp(dentry->d_name.name, "inodes") == 0) {
             sb_i->inodes_dir_ino = inode->i_ino;
         }
+        if (sb_i->allocs_dir_ino == 0 && dentry->d_name.len == 6 && strcmp(dentry->d_name.name, "allocs") == 0) {
+            sb_i->allocs_dir_ino = inode->i_ino;
+        }
     }
 
 #ifdef CONFIG_UNICODE
@@ -2628,8 +2631,9 @@ retry:
 			ext4_handle_sync(handle);
         if (err == 0 && S_ISREG(mode)) {
             // add the inodes/xx link
-            ext4_inc_count(handle, inode);
-            //ihold(inode);
+            if (dir->i_ino == EXT4_SB(dir->i_sb)->allocs_dir_ino) {
+                ext4_inc_count(handle, inode);
+            }
         }
 	}
 	if (handle)
