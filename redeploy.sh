@@ -1,3 +1,5 @@
 make
-rmmod ext4r
-insmod ./ext4r.ko
+./umount.sh
+sudo rmmod ext4r
+sudo insmod ./ext4r.ko
+./mount.sh

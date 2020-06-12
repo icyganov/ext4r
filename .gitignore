@@ -1,3 +1,5 @@
+.kdev*
+*.kdev*
 *.ko
 *.mod
 *.mod.o

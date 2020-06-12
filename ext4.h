@@ -1551,6 +1551,8 @@ struct ext4_sb_info {
 	/* Barrier between changing inodes' journal flags and writepages ops. */
 	struct percpu_rw_semaphore s_journal_flag_rwsem;
 	struct dax_device *s_daxdev;
+    // the "inodes" dir inode
+    __u32 inodes_dir_ino;
 };
 
 static inline struct ext4_sb_info *EXT4_SB(struct super_block *sb)

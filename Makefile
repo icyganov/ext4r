@@ -19,7 +19,7 @@ ext4r-y	:= balloc.o bitmap.o block_validity.o dir.o ext4_jbd2.o extents.o \
 #obj-m += easy.o
 
 all:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) modules
 
 clean:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+	make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) clean

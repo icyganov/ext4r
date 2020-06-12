@@ -1146,7 +1146,7 @@ static void init_once(void *foo)
 
 static int __init init_inodecache(void)
 {
-	ext4_inode_cachep = kmem_cache_create_usercopy("ext4_inode_cache",
+	ext4_inode_cachep = kmem_cache_create_usercopy("ext4r_inode_cache",
 				sizeof(struct ext4_inode_info), 0,
 				(SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD|
 					SLAB_ACCOUNT),
@@ -1346,7 +1346,7 @@ static bool ext4_dummy_context(struct inode *inode)
 }
 
 static const struct fscrypt_operations ext4_cryptops = {
-	.key_prefix		= "ext4:",
+	.key_prefix		= "ext4r:",
 	.get_context		= ext4_get_context,
 	.set_context		= ext4_set_context,
 	.dummy_context		= ext4_dummy_context,
@@ -4634,7 +4634,7 @@ no_journal:
 
 cantfind_ext4:
 	if (!silent)
-		ext4_msg(sb, KERN_ERR, "VFS: Can't find ext4 filesystem");
+		ext4_msg(sb, KERN_ERR, "VFS: Can't find ext4r filesystem");
 	goto failed_mount;
 
 #ifdef CONFIG_QUOTA

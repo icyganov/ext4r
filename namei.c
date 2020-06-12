@@ -1672,22 +1672,41 @@ success:
 	return bh;
 }
 
+static __u32 ext4_inode_lookup(struct inode *dir, struct dentry *dentry) {
+    if (dir->i_ino == EXT4_SB(dir->i_sb)->inodes_dir_ino) {
+        unsigned long inol;
+        int res = kstrtoul(dentry->d_name.name, 10, &inol);
+        if (res) {
+            return 0;
+        }
+        return (__u32)inol;
+    }
+    return 0;
+}
+
 static struct dentry *ext4_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
 {
-	struct inode *inode;
-	struct ext4_dir_entry_2 *de;
-	struct buffer_head *bh;
+    struct inode *inode;
+    __u32 ino,inodes_ino = ext4_inode_lookup(dir, dentry);
+    ino = inodes_ino;
+    
+    if (!ino) {
+        struct buffer_head *bh;
+        struct ext4_dir_entry_2 *de;
+        
+        if (dentry->d_name.len > EXT4_NAME_LEN)
+            return ERR_PTR(-ENAMETOOLONG);
 
-	if (dentry->d_name.len > EXT4_NAME_LEN)
-		return ERR_PTR(-ENAMETOOLONG);
-
-	bh = ext4_lookup_entry(dir, dentry, &de);
-	if (IS_ERR(bh))
-		return ERR_CAST(bh);
-	inode = NULL;
-	if (bh) {
-		__u32 ino = le32_to_cpu(de->inode);
-		brelse(bh);
+        bh = ext4_lookup_entry(dir, dentry, &de);
+        if (IS_ERR(bh))
+            return ERR_CAST(bh);
+        if (bh) {
+            ino = le32_to_cpu(de->inode);
+            brelse(bh);
+        }
+    }
+    inode = NULL;
+    if (ino) {
 		if (!ext4_valid_inum(dir->i_sb, ino)) {
 			EXT4_ERROR_INODE(dir, "bad inode number: %u", ino);
 			return ERR_PTR(-EFSCORRUPTED);
@@ -1714,6 +1733,13 @@ static struct dentry *ext4_lookup(struct inode *dir, struct dentry *dentry, unsi
 			return ERR_PTR(-EPERM);
 		}
 	}
+	
+	if (inode && dir->i_ino == EXT4_ROOT_INO && S_ISDIR(inode->i_mode)) {
+        struct ext4_sb_info* sb_i = EXT4_SB(dir->i_sb);
+        if (sb_i->inodes_dir_ino == 0 && dentry->d_name.len == 6 && strcmp(dentry->d_name.name, "inodes") == 0) {
+            sb_i->inodes_dir_ino = inode->i_ino;
+        }
+    }
 
 #ifdef CONFIG_UNICODE
 	if (!inode && IS_CASEFOLDED(dir)) {
@@ -1725,9 +1751,9 @@ static struct dentry *ext4_lookup(struct inode *dir, struct dentry *dentry, unsi
 		return NULL;
 	}
 #endif
-	return d_splice_alias(inode, dentry);
-}
 
+    return d_splice_alias(inode, dentry);
+}
 
 struct dentry *ext4_get_parent(struct dentry *child)
 {
@@ -2576,6 +2602,11 @@ static int ext4_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	handle_t *handle;
 	struct inode *inode;
 	int err, credits, retries = 0;
+    
+    __u32 inodes_inode = ext4_inode_lookup(dir, dentry);
+    if(inodes_inode) {
+        return -EPERM;
+    }
 
 	err = dquot_initialize(dir);
 	if (err)
@@ -2595,6 +2626,11 @@ retry:
 		err = ext4_add_nondir(handle, dentry, inode);
 		if (!err && IS_DIRSYNC(dir))
 			ext4_handle_sync(handle);
+        if (err == 0 && S_ISREG(mode)) {
+            // add the inodes/xx link
+            ext4_inc_count(handle, inode);
+            //ihold(inode);
+        }
 	}
 	if (handle)
 		ext4_journal_stop(handle);
@@ -3141,35 +3177,39 @@ static int ext4_unlink(struct inode *dir, struct dentry *dentry)
 {
 	int retval;
 	struct inode *inode;
-	struct buffer_head *bh;
+	struct buffer_head *bh = NULL;
 	struct ext4_dir_entry_2 *de;
 	handle_t *handle = NULL;
-
+    
 	if (unlikely(ext4_forced_shutdown(EXT4_SB(dir->i_sb))))
 		return -EIO;
-
+    
 	trace_ext4_unlink_enter(dir, dentry);
 	/* Initialize quotas before so that eventual writes go
 	 * in separate transaction */
 	retval = dquot_initialize(dir);
 	if (retval)
 		return retval;
-	retval = dquot_initialize(d_inode(dentry));
+    __u32 inodes_ino = ext4_inode_lookup(dir, dentry);
+    inode = d_inode(dentry);
+        
+	retval = dquot_initialize(inode);
 	if (retval)
 		return retval;
 
 	retval = -ENOENT;
-	bh = ext4_find_entry(dir, &dentry->d_name, &de, NULL);
-	if (IS_ERR(bh))
-		return PTR_ERR(bh);
-	if (!bh)
-		goto end_unlink;
+    if (!inodes_ino) {
+        // normal inode
+        bh = ext4_find_entry(dir, &dentry->d_name, &de, NULL);
+        if (IS_ERR(bh))
+            return PTR_ERR(bh);
+        if (!bh)
+            goto end_unlink;
 
-	inode = d_inode(dentry);
-
-	retval = -EFSCORRUPTED;
-	if (le32_to_cpu(de->inode) != inode->i_ino)
-		goto end_unlink;
+        retval = -EFSCORRUPTED;
+        if (le32_to_cpu(de->inode) != inode->i_ino)
+            goto end_unlink;
+    }
 
 	handle = ext4_journal_start(dir, EXT4_HT_DIR,
 				    EXT4_DATA_TRANS_BLOCKS(dir->i_sb));
@@ -3187,29 +3227,36 @@ static int ext4_unlink(struct inode *dir, struct dentry *dentry)
 				   dentry->d_name.len, dentry->d_name.name);
 		set_nlink(inode, 1);
 	}
-	retval = ext4_delete_entry(handle, dir, de, bh);
-	if (retval)
-		goto end_unlink;
-	dir->i_ctime = dir->i_mtime = current_time(dir);
-	ext4_update_dx_flag(dir);
-	ext4_mark_inode_dirty(handle, dir);
 	drop_nlink(inode);
 	if (!inode->i_nlink)
 		ext4_orphan_add(handle, inode);
 	inode->i_ctime = current_time(inode);
 	ext4_mark_inode_dirty(handle, inode);
+    
+	if (!inodes_ino) {
+        // normal file
+        retval = ext4_delete_entry(handle, dir, de, bh);
+        if (retval)
+            goto end_unlink;
 
+    } else {
+        retval = 0;
+    }
+
+    dir->i_ctime = dir->i_mtime = current_time(dir);
+    ext4_update_dx_flag(dir);
+    ext4_mark_inode_dirty(handle, dir);
 #ifdef CONFIG_UNICODE
-	/* VFS negative dentries are incompatible with Encoding and
-	 * Case-insensitiveness. Eventually we'll want avoid
-	 * invalidating the dentries here, alongside with returning the
-	 * negative dentries at ext4_lookup(), when it is  better
-	 * supported by the VFS for the CI case.
-	 */
-	if (IS_CASEFOLDED(dir))
-		d_invalidate(dentry);
-#endif
-
+    /* VFS negative dentries are incompatible with Encoding and
+     * Case-insensitiveness. Eventually we'll want avoid
+     * invalidating the dentries here, alongside with returning the
+     * negative dentries at ext4_lookup(), when it is  better
+     * supported by the VFS for the CI case.
+     */
+    if (IS_CASEFOLDED(dir))
+        d_invalidate(dentry);
+#endif    
+    
 end_unlink:
 	brelse(bh);
 	if (handle)
@@ -4018,7 +4065,7 @@ const struct inode_operations ext4_dir_inode_operations = {
 	.listxattr	= ext4_listxattr,
 	.get_acl	= ext4_get_acl,
 	.set_acl	= ext4_set_acl,
-	.fiemap         = ext4_fiemap,
+	.fiemap     = ext4_fiemap,
 };
 
 const struct inode_operations ext4_special_inode_operations = {
